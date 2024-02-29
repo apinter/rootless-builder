@@ -46,8 +46,9 @@ jobs:
 
 1. Get a registration token from your Gitea instance
 1. Install _podman_ and _docker_ on the host, and enable `podman.socket` service for the user that will run the runner (`systemctl --user enable --now podman.socket`)
-  1. Could work without _docker_ installed, just make a symlink from `/usr/bin/podman` to `/usr/bin/docker`
+   - Could work without _docker_ installed, just make a symlink from `/usr/bin/podman` to `/usr/bin/docker`
 1. Create a runner using the token:
+
   ```bash
   podman run \
     --authfile=$HOME/.secret/auth.json \
@@ -62,6 +63,89 @@ jobs:
     -e GITEA_RUNNER_LABELS="ubuntu-latest:docker://node:16-bullseye" \
     --name gitea-runner \
     -d docker.io/gitea/act_runner:latest
-    ```
+  ```
 
 Since the _Gitea_ and _Github actions_ are interoperable follow the [Github instructions](https://docs.github.com/en/actions/hosting-your-own-runners/managing-self-hosted-runners/adding-self-hosted-runners) for the runner deployment.
+
+
+### Podman quadlet
+
+`$HOME/.config/containers/systemd/gitea-runner.yml`: 
+
+```yaml
+---
+apiVersion: v1
+kind: Pod
+metadata:
+  annotations:
+    io.containers.autoupdate: "registry"
+  labels:
+    app: gitea-runner-pod
+  name: gitea-runner-pod
+spec:
+  containers:
+  - name: gitea-runner
+    image: docker.io/gitea/act_runner:latest
+    securityContext:
+      seLinuxOptions:
+        type: spc_t
+    env:
+    - name: GITEA_INSTANCE_URL
+      value: https://gitea.adathor.com
+    - name: GITEA_RUNNER_REGISTRATION_TOKEN
+      valueFrom:
+        secretKeyRef:
+          name: gitea-runner-regtoken
+          key: gitea-runner-token
+    - name: GITEA_RUNNER_NAME
+      value: vegas
+    - name: GITEA_RUNNER_LABELS
+      value: ubuntu-latest:docker://node:16-bullseye
+    - name: CONFIG_FILE
+      value: /config.yaml
+    volumeMounts:
+    - mountPath: /data
+      name: home-podman_vol-gitea-data-host-0
+    - mountPath: /var/run/docker.sock
+      name: run-user-1000-podman-podman.sock-host-1
+    - mountPath: /config.yaml
+      name: home-podman_vol-gitea-config.yaml-host-2
+  volumes:
+  - hostPath:
+      path: /home/podman_vol/gitea/data
+      type: Directory
+    name: home-podman_vol-gitea-data-host-0
+  - hostPath:
+      path: /run/user/1000/podman/podman.sock
+      type: File
+    name: run-user-1000-podman-podman.sock-host-1
+  - hostPath:
+      path: /home/podman_vol/gitea/config.yaml
+      type: File
+    name: home-podman_vol-gitea-config.yaml-host-2
+---
+apiVersion: v1
+kind: Secret
+metadata:
+  name: gitea-runner-regtoken
+data:
+  gitea-runner-token: U3VwZXJTZWNyZXRTcXVpcnJlbA==
+
+```
+
+`$HOME/.config/containers/systemd/gitea-runner.yml`:
+
+```bash
+[Unit]
+After=home-podman_vol.mount gitea.service
+
+[Install]
+WantedBy=default.target
+
+[Kube]
+Yaml=$HOME/.config/containers/systemd/gitea-runner.yml
+
+[Service]
+TimeoutStartSec=900
+ExecStartPre=/usr/bin/sleep 5
+```
