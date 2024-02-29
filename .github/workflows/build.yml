@@ -1,5 +1,5 @@
 # Build & publish docker images
-name: Build DevOps toolbox image using Containerfile
+name: Build rootless-builder
 
 on:
   schedule:
@@ -10,9 +10,6 @@ on:
   pull_request:
     branches:
       - 'main'
-
-
-  # Allows you to run this workflow manually from the Actions tab
   workflow_dispatch:
 
 jobs:

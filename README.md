@@ -17,7 +17,10 @@ jobs:
     runs-on: ubuntu-latest
     container:
       image: docker.io/adathor/rootless-builder:latest
-      options: --device /dev/fuse ## buildah needs fuse to work
+      options: --security-opt label=disabled --device /dev/fuse ## buildah needs fuse to work
+    #   credentials: ## If pulling from a private registry
+        # username: ${{ secrets.DOCKER_REGISTRY_USER }}
+        # password: ${{ secrets.DOCKER_REGISTRY_PASSWORD }}
     steps:
     - uses: actions/checkout@v2
     - name: Build Image
@@ -38,3 +41,27 @@ jobs:
         username: ${{ secrets.DOCKER_REGISTRY_USER }}
         password: ${{ secrets.DOCKER_REGISTRY_PASSWORD }}
 ```
+
+## Gitea runner
+
+1. Get a registration token from your Gitea instance
+1. Install _podman_ and _docker_ on the host, and enable `podman.socket` service for the user that will run the runner (`systemctl --user enable --now podman.socket`)
+  1. Could work without _docker_ installed, just make a symlink from `/usr/bin/podman` to `/usr/bin/docker`
+1. Create a runner using the token:
+  ```bash
+  podman run \
+    --authfile=$HOME/.secret/auth.json \
+    -v $PWD/config.yaml:/config.yaml:z \
+    -v $PWD/data:/data:z \
+    -v /run/user/1000/podman/podman.sock:/var/run/docker.sock \
+    --security-opt label=disable \ ## If SELinux is enabled
+    -e CONFIG_FILE=/config.yaml \
+    -e GITEA_INSTANCE_URL=https://gitea.adathor.com \
+    -e GITEA_RUNNER_REGISTRATION_TOKEN=SuperSecretSquirrel \
+    -e GITEA_RUNNER_NAME=kazeshini \
+    -e GITEA_RUNNER_LABELS="ubuntu-latest:docker://node:16-bullseye" \
+    --name gitea-runner \
+    -d docker.io/gitea/act_runner:latest
+    ```
+
+Since the _Gitea_ and _Github actions_ are interoperable follow the [Github instructions](https://docs.github.com/en/actions/hosting-your-own-runners/managing-self-hosted-runners/adding-self-hosted-runners) for the runner deployment.
